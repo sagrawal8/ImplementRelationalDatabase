@@ -1,0 +1,428 @@
+---
+title: "Practicum 1"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+### Connect to Server
+
+```{r}
+# 1. Library
+library(RMySQL)
+
+# 2. Settings
+db_user <- 'root' 
+db_password <- '1290'
+db_name <- 'birdstrike'
+db_table <- 'courses'
+db_host <- 'localhost'
+db_port <- 3306
+
+# 3. Read data from db
+mydb <-  dbConnect(MySQL(), user = db_user, password = db_password,
+                 dbname = db_name, host = db_host, port = db_port)
+```
+
+## Create Tables
+
+```{sql connection=mydb}
+DROP TABLE IF EXISTS Birds
+```
+
+```{sql connection=mydb}
+create table Birds(
+  Bird_ID INTEGER NOT NULL PRIMARY KEY AUTO_INCREMENT,
+  Species VARCHAR(80) UNIQUE DEFAULT 'Unknown Bird',
+  size ENUM('Small', 'Medium', 'Large', 'Not Available') DEFAULT 'Not Available'
+);
+```
+
+```{sql connection=mydb}
+DROP TABLE IF EXISTS Aircraft
+```
+
+
+```{sql connection=mydb}
+create table Aircraft(
+  Aircraft_ID INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+  Model VARCHAR(100) UNIQUE DEFAULT 'Not Available',
+  Engines Numeric DEFAULT NULL
+);
+```
+
+```{sql connection=mydb}
+DROP TABLE IF EXISTS Airport
+```
+
+```{sql connection=mydb}
+create table Airport(
+  Airport_ID INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+  Airport_Name VARCHAR(100) UNIQUE DEFAULT 'Not Available',
+  Origin VARCHAR(100) DEFAULT 'Not Available'
+);
+```
+
+```{sql connection=mydb}
+DROP TABLE IF EXISTS Record
+```
+
+
+```{sql connection=mydb}
+create table Record (
+  Record_ID Numeric NOT NULL PRIMARY KEY,
+  Airport_ID INT DEFAULT NULL,
+  Aircraft_ID INT DEFAULT NULL,
+  Airport_Name VARCHAR(100),
+  Aircraft_Name VARCHAR(50),
+  Origin VARCHAR(50),
+  Species VARCHAR(50),
+  Flight_Date DATE DEFAULT NULL,
+  Airline VARCHAR(50) DEFAULT 'Not Available',
+  Indicated_Damage ENUM('No damage', 'Caused damage', 'Not Available') DEFAULT 'Not Available',
+  Flight_Impact ENUM('None', 'Aborted Take-off', 'Precautionary Landing', 'Engine Shut Down', 'Other', 'Not Available') DEFAULT 'Not Available',
+  Phase ENUM('Take-off run', 'Climb', 'Approach', 'Landing Roll', 'Descent', 'Taxi', 'Not Available') DEFAULT 'Not Available',
+  Remarks TEXT,
+  Altitude NUMERIC CHECK(Altitude >= 0) DEFAULT NULL,
+  Cost NUMERIC CHECK(Cost >= 0) DEFAULT NULL,
+  Pilot_Warned ENUM('Y', 'N', 'Not Available') DEFAULT 'Not Available',
+  Sky ENUM('No Cloud', 'Some Cloud', 'Overcast', 'Not Available') DEFAULT 'Not Available',
+  Precipitation ENUM('Fog', 'Rain', 'Snow', 'Fog, Rain', 'Rain, Snow', 'Fog, Snow', 'Fog, Rain, Snow', 'Not Available', 'None') DEFAULT 'Not Available',
+  Bird_ID INTEGER DEFAULT NULL,
+  Number_Injured Integer CHECK(Number_Injured >= 0),
+  FOREIGN KEY (Bird_ID) REFERENCES Birds(Bird_ID),
+  FOREIGN KEY (Airport_ID) REFERENCES Airport(Airport_ID),
+  FOREIGN KEY (Aircraft_ID) REFERENCES Aircraft(Aircraft_ID)
+);
+```
+
+
+
+##Q3) READING DATA
+
+```{r}
+mydata = read.csv("C:\\Users\\Owner\\Downloads\\BirdStrikesData.csv")  # read csv file 
+head(mydata)
+```
+
+
+
+##Remove non-essential data
+
+```{r}
+mydata$Wildlife..Number.struck = NULL
+mydata$Wildlife..Number.Struck.Actual = NULL
+mydata$Remains.of.wildlife.collected. = NULL
+mydata$Remains.of.wildlife.sent.to.Smithsonian = NULL
+mydata$Altitude.bin = NULL
+mydata$Is.Aircraft.Large. = NULL
+```
+
+
+
+##Creating Airport Table
+
+```{r}
+library("dplyr")
+head(mydata) %>% select(Airport..Name, Origin.State) 
+```
+
+```{r}
+mydata1 <- mydata %>% select(Airport..Name, Origin.State) 
+names(mydata1)[names(mydata1) == "Airport..Name"] <- "Airport_Name"
+names(mydata1)[names(mydata1) == "Origin.State"] <- "Origin"
+```
+
+```{r}
+dbWriteTable(mydb, "airport", mydata1, append = TRUE, row.names = FALSE)
+```
+
+
+##Creating Aircraft Table
+
+```{r}
+library("dplyr")
+mydata2 <- mydata %>% select(Aircraft..Make.Model, Aircraft..Number.of.engines.) 
+names(mydata2)[names(mydata2) == "Aircraft..Make.Model"] <- "Model"
+names(mydata2)[names(mydata2) == "Aircraft..Number.of.engines."] <- "Engines"
+head(mydata2)
+```
+
+
+
+#### if local data loading is disabled, use
+#### mysql> show global variables like 'local_infile';
+#### mysql> set global local_infile=true;
+#### mysql> exit
+
+
+```{r}
+dbWriteTable(mydb, "aircraft", mydata2, append = TRUE, row.names = FALSE)
+```
+
+
+## Creating Bird Table
+
+```{r}
+library("dplyr")
+mydata3 <- mydata %>% select(Wildlife..Species, Wildlife..Size) 
+names(mydata3)[names(mydata3) == "Wildlife..Species"] <- "Species"
+names(mydata3)[names(mydata3) == "Wildlife..Size"] <- "Size"
+head(mydata3)
+```
+
+```{r}
+dbWriteTable(mydb, "birds", mydata3, append = TRUE, row.names = FALSE)
+```
+
+
+## Remove Non Essential Columns
+
+```{r}
+head(mydata)
+mydata$Wildlife..Size = NULL
+mydata$Is.Aircraft.Large. = NULL
+mydata$Aircraft..Number.of.engines. = NULL
+mydata$Aircraft..Type = NULL
+head(mydata)
+```
+
+
+## Fill in Record table and rename columns to be same as SQL table
+```{r}
+library("dplyr")
+names(mydata)[names(mydata) == "ï..Record.ID"] <- "Record_ID"
+names(mydata)[names(mydata) == "Airport..Name"] <- "Airport_Name"
+names(mydata)[names(mydata) == "Aircraft..Make.Model"] <- "Aircraft_Name"
+names(mydata)[names(mydata) == "Effect..Impact.to.flight"] <- "Flight_Impact"
+names(mydata)[names(mydata) == "FlightDate"] <- "Flight_Date"
+names(mydata)[names(mydata) == "Effect..Indicated.Damage"] <- "Indicated_Damage"
+names(mydata)[names(mydata) == "Aircraft..Airline.Operator"] <- "Airline"
+names(mydata)[names(mydata) == "Origin.State"] <- "Origin"
+names(mydata)[names(mydata) == "When..Phase.of.flight"] <- "Phase"
+names(mydata)[names(mydata) == "Conditions..Sky"] <- "Sky"
+names(mydata)[names(mydata) == "Wildlife..Species"] <- "Species"
+names(mydata)[names(mydata) == "Pilot.warned.of.birds.or.wildlife."] <- "Pilot_Warned"
+names(mydata)[names(mydata) == "Cost..Total.."] <- "Cost"
+names(mydata)[names(mydata) == "Feet.above.ground"] <- "Altitude"
+names(mydata)[names(mydata) == "Number.of.people.injured"] <- "Number_Injured"
+names(mydata)[names(mydata) == "Conditions..Precipitation"] <- "Precipitation"
+```
+
+
+## Reformat Date in R dataframe to be read into SQL
+```{r}
+library("tidyr")
+mydata <- separate(mydata, Flight_Date, into = c("Date", "Time"), sep = " ")
+mydata$Time = NULL
+mydata$newdate <- strptime(as.character(mydata$Date), "%m/%d/%Y")
+mydata$newdate <- format(mydata$newdate, "%Y-%m-%d")
+names(mydata)[names(mydata) == "newdate"] <- "Flight_Date"
+mydata$Date = NULL
+mydata$Flight_Date <- as.Date(mydata$Flight_Date)
+head(mydata)
+```
+
+```{r}
+dbWriteTable(mydb, "record", mydata, append = TRUE, row.names = FALSE)
+```
+
+
+## Fill in record table with foreign keys for Airport
+```{sql connection=mydb}
+UPDATE record, airport 
+SET
+record.Airport_ID = airport.Airport_ID
+WHERE record.airport_Name = airport.airport_name AND record.Origin = airport.Origin
+```
+
+
+## Fill in record table with foreign keys for Aircraft
+```{sql connection=mydb}
+UPDATE record, aircraft
+SET
+record.Aircraft_ID = aircraft.Aircraft_ID
+WHERE record.aircraft_Name = aircraft.Model
+```
+
+
+## Fill in record table with foreign keys for Birds
+```{sql connection=mydb}
+UPDATE record, birds
+SET
+record.Bird_ID = birds.bird_ID
+WHERE record.species = birds.species
+```
+
+
+## Drop columns for record after filling foreign keys
+```{sql connection=mydb}
+ALTER TABLE record
+DROP COLUMN species;
+```
+
+```{sql connection=mydb}
+ALTER TABLE record
+DROP COLUMN Aircraft_Name;
+```
+
+```{sql connection=mydb}
+ALTER TABLE record
+DROP COLUMN Airport_Name;
+```
+
+```{sql connection=mydb}
+ALTER TABLE record
+DROP COLUMN Origin;
+```
+
+
+## Q4)
+```{sql connection=mydb}
+SELECT 
+    record.airline AS Airline, COUNT(DISTINCT Record.record_id) as BirdStrikes
+FROM
+    Record
+WHERE
+    Record.phase = 'Take-off run'
+        OR Record.Phase = 'Climb'
+GROUP BY Record.airline
+```
+
+
+## Q5)
+```{sql connection=mydb}
+SELECT 
+    airport.Airport_Name AS Airport_Name, COUNT(Record.record_id) AS BirdStrikes
+FROM
+    Record, Airport
+    WHERE Record.Airport_ID = airport.Airport_ID
+GROUP BY Airport.airport_Name
+ORDER BY BirdStrikes DESC;
+```
+
+
+## Q6)
+```{r}
+query6 <- dbGetQuery(mydb, "SELECT EXTRACT(YEAR FROM Record.flight_date) as Year, 
+                     COUNT(DISTINCT Record.record_id) AS BirdStrikes FROM Record GROUP BY 
+                     EXTRACT(YEAR FROM Record.flight_date);")
+head(query6);
+```
+
+
+## Q7) Create View For ascent/Take-off Run
+
+``````{sql connection=mydb}
+DROP VIEW IF EXISTS ViewAsc
+```
+
+
+```{sql connection=mydb}
+CREATE View ViewAsc AS
+SELECT 
+    EXTRACT(YEAR FROM Record.flight_date) AS YEAR,
+    Record.Phase,
+    COUNT(DISTINCT Record.record_id) AS BirdStrikes
+FROM
+    Record
+WHERE EXTRACT(YEAR FROM Record.flight_date) >= 2008
+GROUP BY EXTRACT(YEAR FROM Record.flight_date) , Record.Phase
+HAVING Record.phase = 'Take-off run'
+    OR Record.phase = 'Climb'
+```
+
+``````{sql connection=mydb}
+DROP VIEW IF EXISTS ViewDesc
+```
+
+
+## Create view for Descent/Landing Roll
+```{sql connection=mydb}
+CREATE View ViewDesc AS
+SELECT 
+    EXTRACT(YEAR FROM Record.flight_date) AS YEAR,
+    Record.Phase,
+    COUNT(DISTINCT Record.record_id) AS BirdStrikes
+FROM
+    Record
+WHERE EXTRACT(YEAR FROM Record.flight_date) >= 2008
+GROUP BY EXTRACT(YEAR FROM Record.flight_date) , Record.Phase
+HAVING Record.phase = 'Landing Roll'
+    OR Record.phase = 'Descent'
+```
+
+
+## Import Ascent/Take-off data into data frame
+
+```{r}
+chart1 <- dbGetQuery(mydb, "Select Year, sum(BirdStrikes) as BirdStrikes from viewAsc Group By Year");
+chart1["Phase"] = "Ascent + TakeOff"
+chart1
+```
+
+
+## Import Descent/Landing data into data frame
+
+```{r}
+chart2 <- dbGetQuery(mydb, "Select Year, sum(BirdStrikes) as BirdStrikes from viewDesc Group By Year");
+chart2["Phase"] = "Descent + Landing"
+chart2
+```
+
+
+## Merge the two
+
+```{r}
+chart3 <- rbind(chart1, chart2)
+chart3
+```
+
+
+## Create Graph
+
+```{r}
+library("ggplot2")
+ggplot(data = chart3, mapping = aes(x = Year, y = BirdStrikes, fill = Phase)) + 
+  geom_bar(stat = "identity", position = "dodge")
+```
+
+
+## Q8)
+
+```{sql connection=mydb}
+DROP Procedure IF EXISTS deleteRecord
+```
+
+```{sql connection=mydb}
+CREATE DEFINER=`root`@`localhost` PROCEDURE `deleteRecord`(IN recordID INTEGER)
+BEGIN
+Delete from record
+where record.record_id = recordID;
+END
+```
+
+
+#### Might show up as 0 rows since it has already been deleted. Re-read data into SQL or enter new Record_ID
+
+```{sql connection=mydb}
+Select * from record where Record_ID = 205958
+```
+
+```{sql connection=mydb}
+Call deleteRecord(205958);
+```
+
+```{sql connection=mydb}
+Select * from record where Record_ID = 205958
+```
+
+
+## Disconnect from Database
+
+Disconnect from the database (important as database servers have limited numbers of connection and each connection uses a resource).
+
+```{r}
+dbDisconnect(mydb)
+```
+
